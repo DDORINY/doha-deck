@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -8,6 +9,7 @@ type Project = {
   slug: string;
   title: string;
   summary: string;
+  thumbnailUrl: string;
   stacks: string[];
   githubUrl: string;
   deployUrl: string;
@@ -34,6 +36,27 @@ function ProjectPreview() {
       </div>
       <div className="absolute bottom-5 h-3 w-72 rounded-b-2xl bg-gray-300" />
     </div>
+  );
+}
+
+function ProjectThumbnail({ src, title }: { src: string; title: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return <ProjectPreview />;
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={`${title} 썸네일`}
+      fill
+      loading="lazy"
+      sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
+      unoptimized
+      onError={() => setFailed(true)}
+      className="h-full w-full bg-gray-100 object-cover"
+    />
   );
 }
 
@@ -175,9 +198,9 @@ export default function ProjectsList() {
                   <Link
                     href={`/projects/${project.slug}`}
                     aria-label={`${project.title} 상세 보기`}
-                    className="block h-52 border-b border-gray-200"
+                    className="relative block h-52 overflow-hidden border-b border-gray-200"
                   >
-                    <ProjectPreview />
+                    <ProjectThumbnail src={project.thumbnailUrl} title={project.title} />
                   </Link>
 
                   <div className="p-6">
