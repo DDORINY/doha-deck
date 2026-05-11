@@ -1,12 +1,12 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "./prisma";
 
 export const SESSION_COOKIE_NAME = "doha_admin_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
-type SessionPayload = {
+type AdminTokenPayload = {
   sub: string;
   email: string;
   name: string;
@@ -26,24 +26,21 @@ function base64UrlDecode(value: string) {
   return Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
-function getJwtSecret() {
-  return (
-    process.env.JWT_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.ADMIN_PASSWORD ||
-    "doha-deck-dev-secret"
-  );
+function getTokenSecret() {
+  const secret = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD;
+
+  if (!secret) {
+    throw new Error("JWT_SECRET 또는 ADMIN_PASSWORD 환경 변수가 필요합니다.");
+  }
+
+  return secret;
 }
 
 function sign(input: string) {
-  return base64UrlEncode(createHmac("sha256", getJwtSecret()).update(input).digest());
+  return base64UrlEncode(createHmac("sha256", getTokenSecret()).update(input).digest());
 }
 
-export function createSessionToken(admin: {
-  id: string;
-  email: string;
-  name: string;
-}) {
+export function createAdminToken(admin: { id: string; email: string; name: string }) {
   const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64UrlEncode(
     JSON.stringify({
@@ -51,14 +48,14 @@ export function createSessionToken(admin: {
       email: admin.email,
       name: admin.name,
       exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE,
-    } satisfies SessionPayload),
+    } satisfies AdminTokenPayload),
   );
   const unsigned = `${header}.${payload}`;
 
   return `${unsigned}.${sign(unsigned)}`;
 }
 
-export function verifySessionToken(token: string | undefined) {
+export function verifyAdminToken(token: string | undefined) {
   if (!token) {
     return null;
   }
@@ -81,7 +78,7 @@ export function verifySessionToken(token: string | undefined) {
   }
 
   try {
-    const parsed = JSON.parse(base64UrlDecode(payload).toString("utf8")) as SessionPayload;
+    const parsed = JSON.parse(base64UrlDecode(payload).toString("utf8")) as AdminTokenPayload;
 
     if (!parsed.sub || parsed.exp < Math.floor(Date.now() / 1000)) {
       return null;
@@ -93,38 +90,36 @@ export function verifySessionToken(token: string | undefined) {
   }
 }
 
-export async function getAdminSession() {
-  const cookieStore = await cookies();
-  const payload = verifySessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+async function findAdminByToken(token: string | undefined) {
+  const payload = verifyAdminToken(token);
 
   if (!payload) {
     return null;
   }
 
-  try {
-    const admin = await prisma.admin.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, email: true, name: true },
-    });
-
-    return admin;
-  } catch (error) {
-    console.error("Failed to load admin session", error);
-    return null;
-  }
+  return prisma.admin.findUnique({
+    where: { id: payload.sub },
+    select: { id: true, email: true, name: true },
+  });
 }
 
-export async function requireAdmin() {
-  const admin = await getAdminSession();
+export async function getAdminFromRequest(request?: NextRequest) {
+  const token = request
+    ? request.cookies.get(SESSION_COOKIE_NAME)?.value
+    : (await cookies()).get(SESSION_COOKIE_NAME)?.value;
 
-  if (!admin) {
-    return null;
-  }
-
-  return admin;
+  return findAdminByToken(token);
 }
 
-export function setSessionCookie(response: NextResponse, token: string) {
+export async function getAdminSession() {
+  return getAdminFromRequest();
+}
+
+export async function requireAdmin(request?: NextRequest) {
+  return getAdminFromRequest(request);
+}
+
+export function setAuthCookie(response: NextResponse, token: string) {
   response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -134,7 +129,7 @@ export function setSessionCookie(response: NextResponse, token: string) {
   });
 }
 
-export function clearSessionCookie(response: NextResponse) {
+export function clearAuthCookie(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
@@ -143,3 +138,8 @@ export function clearSessionCookie(response: NextResponse) {
     maxAge: 0,
   });
 }
+
+export const createSessionToken = createAdminToken;
+export const verifySessionToken = verifyAdminToken;
+export const setSessionCookie = setAuthCookie;
+export const clearSessionCookie = clearAuthCookie;

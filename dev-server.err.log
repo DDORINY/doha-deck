@@ -1,0 +1,10 @@
+파일 업로드 중 오류가 발생했습니다. Error: Bucket not found
+    at uploadFileToStorage (lib\storage.ts:83:11)
+    at async POST (app\api\files\route.ts:28:26)
+  81 |   if (!response.ok) {
+  82 |     const result = (await response.json().catch(() => null)) as { message?: string } | null;
+> 83 |     throw new Error(result?.message ?? "Supabase Storage 업로드에 실패했습니다.");
+     |           ^
+  84 |   }
+  85 |
+  86 |   return {

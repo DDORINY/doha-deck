@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession } from "../../../../../lib/auth";
 import EditProjectForm, { EditableProject } from "./EditProjectForm";
 
 export const dynamic = "force-dynamic";

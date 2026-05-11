@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession } from "../../../../lib/auth";
 import NewProjectForm from "./NewProjectForm";
 
 export const dynamic = "force-dynamic";

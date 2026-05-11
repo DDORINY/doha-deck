@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import FileUploadField from "../../../../components/admin/FileUploadField";
+
+function toNullableNumber(value: FormDataEntryValue | null) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
 
 function TagInput({
   label,
@@ -20,14 +26,8 @@ function TagInput({
   const addItem = () => {
     const trimmed = value.trim();
 
-    if (!trimmed) {
-      return;
-    }
-
-    if (!items.includes(trimmed)) {
-      onChange([...items, trimmed]);
-    }
-
+    if (!trimmed) return;
+    if (!items.includes(trimmed)) onChange([...items, trimmed]);
     setValue("");
   };
 
@@ -72,20 +72,17 @@ function TextField({
   name,
   placeholder,
   required,
-  type = "text",
 }: {
   label: string;
   name: string;
   placeholder: string;
   required?: boolean;
-  type?: string;
 }) {
   return (
     <div>
       <label className="text-sm font-medium text-white">{label}</label>
       <input
         name={name}
-        type={type}
         required={required}
         placeholder={placeholder}
         className="mt-3 h-12 w-full rounded-md border border-zinc-300 bg-white px-4 text-sm text-zinc-950 outline-none transition placeholder:text-slate-400 focus:border-green-500"
@@ -121,53 +118,46 @@ function TextArea({
   );
 }
 
+function SectionImageFields() {
+  return (
+    <section className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-5">
+      <h2 className="text-sm font-black text-white">섹션 이미지</h2>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        파일을 선택하면 Supabase Storage에 업로드되고, 프로젝트에는 업로드된 파일 URL이 저장됩니다.
+      </p>
+      <div className="mt-5 space-y-5">
+        <FileUploadField label="프로젝트 개요 이미지" name="overviewImageUrl" />
+        <FileUploadField label="주요 기능 이미지" name="featuresImageUrl" />
+        <FileUploadField label="기술스택 이미지" name="stacksImageUrl" />
+        <FileUploadField label="아키텍처 이미지" name="architectureImageUrl" />
+        <FileUploadField label="코드리뷰 이미지" name="codeReviewImageUrl" />
+        <FileUploadField label="트러블슈팅 이미지" name="troubleshootingImageUrl" />
+        <FileUploadField label="회고 이미지" name="retrospectiveImageUrl" />
+      </div>
+    </section>
+  );
+}
+
 function DemoAssetFields() {
-  const [fileName, setFileName] = useState("");
-  const [uploading, setUploading] = useState(false);
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file) {
-      setFileName("");
-      return;
-    }
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await fetch("/api/files", { method: "POST", body: formData });
-    setUploading(false);
-
-    setFileName(response.ok ? file.name : "파일 확인에 실패했습니다.");
-  };
-
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-5">
       <h2 className="text-sm font-black text-white">시연 자료</h2>
       <p className="mt-2 text-xs leading-5 text-slate-500">
-        등록/수정 화면에서만 관리하는 시연 영상 링크와 파일 미리보기입니다.
+        YouTube 링크를 입력하거나, 시연 파일을 직접 업로드할 수 있습니다.
       </p>
-
       <div className="mt-5 space-y-5">
-        <TextField
-          label="YouTube 시연 영상 URL"
-          name="demoYoutubeUrl"
-          placeholder="https://youtu.be/..."
+        <TextField label="YouTube 시연 영상 URL" name="demoYoutubeUrl" placeholder="https://youtu.be/..." />
+        <FileUploadField
+          label="시연 파일"
+          name="demoFileUrl"
+          kind="file"
+          accept="image/*,video/*,application/pdf"
+          metadataNames={{
+            fileName: "demoFileName",
+            fileType: "demoFileType",
+            fileSize: "demoFileSize",
+          }}
         />
-
-        <div>
-          <label className="text-sm font-bold text-white">시연 파일 업로드</label>
-          <input
-            type="file"
-            accept="image/*,video/*,application/pdf"
-            onChange={(event) => handleFile(event.target.files?.[0])}
-            className="mt-3 block w-full text-sm text-slate-400 file:mr-4 file:rounded-md file:border-0 file:bg-white file:px-4 file:py-2.5 file:text-sm file:font-black file:text-black hover:file:bg-zinc-100"
-          />
-          <p className="mt-2 text-xs text-slate-500">
-            {uploading
-              ? "파일 확인 중..."
-              : fileName || "이미지, 영상, PDF 파일을 선택할 수 있습니다."}
-          </p>
-        </div>
       </div>
     </section>
   );
@@ -177,7 +167,8 @@ export default function NewProjectForm() {
   const router = useRouter();
   const [visibility, setVisibility] = useState("PUBLIC");
   const [stacks, setStacks] = useState<string[]>([]);
-  const [features, setFeatures] = useState<string[]>([]);
+  const [basicFeatures, setBasicFeatures] = useState<string[]>([]);
+  const [advancedFeatures, setAdvancedFeatures] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -187,6 +178,7 @@ export default function NewProjectForm() {
     setLoading(true);
 
     const formData = new FormData(event.currentTarget);
+    const features = [...basicFeatures, ...advancedFeatures];
     const response = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -194,16 +186,32 @@ export default function NewProjectForm() {
         title: formData.get("title"),
         summary: formData.get("summary"),
         description: formData.get("description"),
+        thumbnailUrl: formData.get("thumbnailUrl"),
         githubUrl: formData.get("githubUrl"),
         deployUrl: formData.get("deployUrl"),
         deckUrl: formData.get("deckUrl"),
         readmeUrl: formData.get("readmeUrl"),
+        demoYoutubeUrl: formData.get("demoYoutubeUrl"),
+        demoFileUrl: formData.get("demoFileUrl"),
+        demoFileName: formData.get("demoFileName"),
+        demoFileType: formData.get("demoFileType"),
+        demoFileSize: toNullableNumber(formData.get("demoFileSize")),
         architecture: formData.get("architecture"),
+        codeReview: formData.get("codeReview"),
         troubleshooting: formData.get("troubleshooting"),
         retrospective: formData.get("retrospective"),
+        overviewImageUrl: formData.get("overviewImageUrl"),
+        featuresImageUrl: formData.get("featuresImageUrl"),
+        stacksImageUrl: formData.get("stacksImageUrl"),
+        architectureImageUrl: formData.get("architectureImageUrl"),
+        codeReviewImageUrl: formData.get("codeReviewImageUrl"),
+        troubleshootingImageUrl: formData.get("troubleshootingImageUrl"),
+        retrospectiveImageUrl: formData.get("retrospectiveImageUrl"),
         visibility,
         stacks,
         features,
+        basicFeatures,
+        advancedFeatures,
       }),
     });
 
@@ -221,72 +229,29 @@ export default function NewProjectForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mx-auto w-full max-w-2xl space-y-9 pb-16">
-      <h1 className="text-3xl font-black tracking-normal text-white sm:text-4xl">
-        새 프로젝트 등록
-      </h1>
+      <h1 className="text-3xl font-black tracking-normal text-white sm:text-4xl">새 프로젝트 등록</h1>
 
       <TextField label="프로젝트명" name="title" placeholder="프로젝트명을 입력하세요" required />
+      <TextField label="한 줄 소개" name="summary" placeholder="프로젝트를 한 줄로 소개해주세요" required />
+      <TextArea label="프로젝트 개요" name="description" placeholder="프로젝트 개요를 입력하세요" rows={6} required />
 
-      <TextField
-        label="한 줄 소개"
-        name="summary"
-        placeholder="프로젝트를 한 줄로 소개해주세요"
-        required
-      />
+      <TagInput label="기술스택" placeholder="기술스택을 입력하고 Enter를 눌러 추가하세요" items={stacks} onChange={setStacks} />
+      <TagInput label="기본 기능" placeholder="기본 기능을 입력하고 Enter를 눌러 추가하세요" items={basicFeatures} onChange={setBasicFeatures} />
+      <TagInput label="고도화 기능" placeholder="고도화 기능을 입력하고 Enter를 눌러 추가하세요" items={advancedFeatures} onChange={setAdvancedFeatures} />
 
-      <TextArea
-        label="상세 설명"
-        name="description"
-        placeholder="프로젝트에 대한 상세 설명을 입력하세요"
-        rows={6}
-        required
-      />
-
-      <TagInput
-        label="기술스택"
-        placeholder="기술스택을 입력하고 Enter를 눌러 추가하세요. 예: React"
-        items={stacks}
-        onChange={setStacks}
-      />
-
-      <TagInput
-        label="주요 기능"
-        placeholder="주요 기능을 입력하고 Enter를 눌러 추가하세요"
-        items={features}
-        onChange={setFeatures}
-      />
-
+      <FileUploadField label="목록 썸네일 이미지" name="thumbnailUrl" />
       <TextField label="GitHub URL" name="githubUrl" placeholder="https://github.com/..." />
       <TextField label="배포 URL" name="deployUrl" placeholder="https://..." />
       <TextField label="발표자료 URL" name="deckUrl" placeholder="https://slides.com/..." />
-      <TextField
-        label="README URL"
-        name="readmeUrl"
-        placeholder="https://github.com/.../blob/main/README.md"
-      />
+      <TextField label="README URL" name="readmeUrl" placeholder="https://github.com/.../blob/main/README.md" />
 
       <DemoAssetFields />
+      <SectionImageFields />
 
-      <TextArea
-        label="아키텍처"
-        name="architecture"
-        placeholder="프로젝트의 아키텍처를 설명해주세요"
-        rows={5}
-      />
-
-      <TextArea
-        label="트러블슈팅"
-        name="troubleshooting"
-        placeholder="프로젝트를 진행하며 해결한 문제들을 기록해보세요"
-        rows={5}
-      />
-
-      <TextArea
-        label="회고"
-        name="retrospective"
-        placeholder="프로젝트를 마무리하며 느낀 점을 작성해보세요"
-        rows={5}
-      />
+      <TextArea label="아키텍처" name="architecture" placeholder="프로젝트 구조를 설명해주세요" />
+      <TextArea label="코드리뷰" name="codeReview" placeholder="코드 설계, 개선 포인트, 리뷰 내용을 정리해주세요" />
+      <TextArea label="트러블슈팅" name="troubleshooting" placeholder="프로젝트를 진행하며 해결한 문제들을 기록해보세요" />
+      <TextArea label="회고" name="retrospective" placeholder="프로젝트를 마무리하며 느낀 점을 작성해보세요" />
 
       <fieldset>
         <legend className="text-sm font-bold text-white">공개 설정</legend>
@@ -319,10 +284,7 @@ export default function NewProjectForm() {
       {error ? <p className="text-sm font-semibold text-red-400">{error}</p> : null}
 
       <div className="flex justify-end gap-3 pt-4">
-        <Link
-          href="/admin/dashboard"
-          className="inline-flex h-11 items-center justify-center rounded-md bg-zinc-900 px-6 text-sm font-bold text-white hover:bg-zinc-800"
-        >
+        <Link href="/admin/dashboard" className="inline-flex h-11 items-center justify-center rounded-md bg-zinc-900 px-6 text-sm font-bold text-white hover:bg-zinc-800">
           취소
         </Link>
         <button

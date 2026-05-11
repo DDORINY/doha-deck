@@ -48,3 +48,23 @@ export function parseStoredList(value: string | null | undefined) {
 export function stringifyList(value: unknown) {
   return JSON.stringify(cleanStringList(value));
 }
+
+export function convertYoutubeEmbedUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.hostname.includes("youtube.com")) {
+      const videoId = parsedUrl.searchParams.get("v");
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+
+    if (parsedUrl.hostname.includes("youtu.be")) {
+      const videoId = parsedUrl.pathname.replace("/", "");
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+
+    return url;
+  } catch {
+    return url;
+  }
+}
